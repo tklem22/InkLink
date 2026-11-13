@@ -117,6 +117,13 @@
     words.forEach(function (l, i) { wctx.fillText(l, 400, top + i * lh); });
   }
 
+  var pending = false;
+  function schedule() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(function () { pending = false; render(); });
+  }
+
   function render() {
     if (mode === 'photo') renderPhoto();
     else if (mode === 'text') renderText();
@@ -160,7 +167,7 @@
     var p = pos(e);
     wctx.strokeStyle = pen; wctx.lineWidth = pen === '#fff' ? 36 : 10; wctx.lineCap = 'round';
     wctx.beginPath(); wctx.moveTo(last.x, last.y); wctx.lineTo(p.x, p.y); wctx.stroke();
-    last = p; render();
+    last = p; schedule();
   });
   view.addEventListener('pointerup', function () { drawing = false; });
   document.getElementById('pen-b').onclick = function () { pen = '#000'; };
