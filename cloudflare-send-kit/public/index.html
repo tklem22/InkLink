@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Send to the frame</title>
+<style>
+  body{font-family:-apple-system,system-ui,sans-serif;margin:0;padding:16px;background:#faf6f0;color:#2b2b2b;max-width:640px;margin:auto}
+  h1{font-size:22px;margin:0 0 12px}
+  .tabs{display:flex;gap:8px;margin-bottom:12px}
+  .tabs button{flex:1;padding:12px;border:2px solid #b33;background:#fff;border-radius:10px;font-size:16px}
+  .tabs button.on{background:#b33;color:#fff}
+  .pane{display:none}.pane.on{display:block}
+  canvas{width:100%;border:2px solid #333;background:#fff;touch-action:none;display:block}
+  label{display:block;margin:10px 0 4px;font-size:14px}
+  input[type=text],select,textarea{width:100%;font-size:18px;padding:8px;box-sizing:border-box}
+  .row{display:flex;gap:8px;margin-top:10px}
+  .row button{flex:1}
+  button{padding:12px;font-size:16px;border-radius:10px;border:2px solid #333;background:#fff}
+  #send{width:100%;margin-top:14px;background:#b33;color:#fff;border-color:#b33;font-size:18px}
+  #msg{margin-top:10px;min-height:24px;font-size:16px}
+  .small{font-size:13px;color:#666}
+</style>
+</head>
+<body>
+<h1>Send to the frame 💌</h1>
+<div class="tabs">
+  <button id="t-photo" class="on">Photo</button>
+  <button id="t-text">Words</button>
+  <button id="t-draw">Draw</button>
+</div>
+
+<div id="p-photo" class="pane on">
+  <input type="file" id="file" accept="image/*">
+  <p class="small">Pick a photo from your phone. It gets shrunk to fit the frame.</p>
+</div>
+
+<div id="p-text" class="pane">
+  <label>Your words</label>
+  <textarea id="words" rows="3">I love you</textarea>
+  <label>Style</label>
+  <select id="font">
+    <option value="'Dancing Script', cursive">Dancing Script (loopy)</option>
+    <option value="'Pacifico', cursive">Pacifico (bold)</option>
+    <option value="Georgia, serif">Plain serif</option>
+  </select>
+  <label>Color</label>
+  <select id="tcolor"><option value="#000">Black</option><option value="#f00">Red</option></select>
+</div>
+
+<div id="p-draw" class="pane">
+  <div class="row">
+    <button id="pen-b">Black pen</button>
+    <button id="pen-r">Red pen</button>
+    <button id="pen-w">Eraser</button>
+    <button id="clr">Clear</button>
+  </div>
+  <p class="small">Draw in the box below with your finger.</p>
+</div>
+
+<p class="small" style="margin-top:14px">What the frame will show:</p>
+<canvas id="view" width="800" height="480"></canvas>
+<canvas id="work" width="800" height="480" style="display:none"></canvas>
+
+<button id="send">Send to the frame</button>
+<div id="msg"></div>
+<label>Secret key <span class="small">(saved on this phone after the first time)</span></label>
+<input type="text" id="key" autocomplete="off" autocapitalize="off">
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&family=Pacifico&display=swap">
+<script src="convert.js"></script>
+<script>
+(function () {
+  var work = document.getElementById('work'), wctx = work.getContext('2d');
+  var view = document.getElementById('view'), vctx = view.getContext('2d');
+  var mode = 'photo', img = null, pen = '#000', drawing = false, last = null;
+  var msg = document.getElementById('msg'), keyBox = document.getElementById('key');
+  try { keyBox.value = localStorage.getItem('framekey') || ''; } catch (e) {}
+
+  function blank() { wctx.fillStyle = '#fff'; wctx.fillRect(0, 0, 800, 480); }
+  blank();
+
+  function setMode(m) {
+    mode = m;
+    ['photo', 'text', 'draw'].forEach(function (k) {
+      document.getElementById('t-' + k).className = k === m ? 'on' : '';
+      document.getElementById('p-' + k).className = 'pane' + (k === m ? ' on' : '');
+    });
+    render();
+  }
+  ['photo', 'text', 'draw'].forEach(function (k) {
+    document.getElementById('t-' + k).onclick = function () { setMode(k); };
+  });
+
+  function renderPhoto() {
+    blank();
+    if (!img) return;
+    var s = Math.min(800 / img.width, 480 / img.height);
+    var w = img.width * s, h = img.height * s;
+    wctx.drawImage(img, (800 - w) / 2, (480 - h) / 2, w, h);
+  }
+
+  function renderText() {
+    blank();
+    var words = document.getElementById('words').value.split('\n');
+    var font = document.getElementById('font').value;
+    wctx.fillStyle = document.getElementById('tcolor').value;
+    wctx.textAlign = 'center'; wctx.textBaseline = 'middle';
+    var size = 200;
+    function fits() {
+      wctx.font = size + 'px ' + font;
+      return words.every(function (l) { return wctx.measureText(l).width <= 740; }) && size * 1.2 * words.length <= 440;
+    }
+    while (size > 24 && !fits()) size -= 4;
+    wctx.font = size + 'px ' + font;
+    var lh = size * 1.2, top = 240 - (lh * (words.length - 1)) / 2;
+    words.forEach(function (l, i) { wctx.fillText(l, 400, top + i * lh); });
+  }
+
+  var pending = false;
+  function schedule() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(function () { pending = false; render(); });
+  }
+
+  function render() {
+    if (mode === 'photo') renderPhoto();
+    else if (mode === 'text') renderText();
+    // draw mode paints straight onto the work canvas
+    var d = wctx.getImageData(0, 0, 800, 480);
+    var bmp = FrameConvert.toFrameBMP(d.data, mode === 'photo');
+    var out = vctx.createImageData(800, 480), pal = [[255,255,255],[0,0,0],[255,0,0]];
+    for (var y = 0; y < 480; y++) for (var x = 0; x < 800; x++) {
+      var v = (bmp[70 + y * 200 + (x >> 2)] >> (6 - 2 * (x & 3))) & 3, o = (y * 800 + x) * 4;
+      out.data[o] = pal[v][0]; out.data[o + 1] = pal[v][1]; out.data[o + 2] = pal[v][2]; out.data[o + 3] = 255;
+    }
+    vctx.putImageData(out, 0, 0);
+    window.__bmp = bmp;
+  }
+
+  document.getElementById('file').onchange = function (e) {
+    var f = e.target.files[0]; if (!f) return;
+    var im = new Image();
+    im.onload = function () { img = im; render(); };
+    im.src = URL.createObjectURL(f);
+  };
+  ['words', 'font', 'tcolor'].forEach(function (id) {
+    document.getElementById(id).oninput = function () { if (mode === 'text') render(); };
+  });
+  function reloadFonts() { if (mode === 'text') render(); }
+  if (document.fonts && document.fonts.load) {
+    Promise.all([document.fonts.load("200px 'Dancing Script'"), document.fonts.load("200px 'Pacifico'")]).then(reloadFonts, reloadFonts);
+    document.getElementById('font').addEventListener('change', function () {
+      document.fonts.load('200px ' + this.value).then(reloadFonts, reloadFonts);
+    });
+  }
+
+  // drawing
+  function pos(e) {
+    var r = view.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * 800 / r.width, y: (e.clientY - r.top) * 480 / r.height };
+  }
+  view.addEventListener('pointerdown', function (e) { if (mode !== 'draw') return; drawing = true; last = pos(e); view.setPointerCapture(e.pointerId); });
+  view.addEventListener('pointermove', function (e) {
+    if (!drawing) return;
+    var p = pos(e);
+    wctx.strokeStyle = pen; wctx.lineWidth = pen === '#fff' ? 36 : 10; wctx.lineCap = 'round';
+    wctx.beginPath(); wctx.moveTo(last.x, last.y); wctx.lineTo(p.x, p.y); wctx.stroke();
+    last = p; schedule();
+  });
+  view.addEventListener('pointerup', function () { drawing = false; });
+  document.getElementById('pen-b').onclick = function () { pen = '#000'; };
+  document.getElementById('pen-r').onclick = function () { pen = '#f00'; };
+  document.getElementById('pen-w').onclick = function () { pen = '#fff'; };
+  document.getElementById('clr').onclick = function () { blank(); render(); };
+
+  document.getElementById('send').onclick = function () {
+    var key = keyBox.value.trim();
+    if (!key) { msg.textContent = 'Type your secret key first.'; return; }
+    if (mode === 'photo' && !img) { msg.textContent = 'Pick a photo first.'; return; }
+    msg.textContent = 'Sending...';
+    fetch('/send', { method: 'POST', headers: { 'x-key': key }, body: window.__bmp })
+      .then(function (r) { return r.text().then(function (t) { return [r.ok, t]; }); })
+      .then(function (a) {
+        if (a[0]) { try { localStorage.setItem('framekey', key); } catch (e) {} msg.textContent = 'Sent! The frame updates within a few minutes. 💖'; }
+        else msg.textContent = a[1] === 'Wrong key' ? 'That key is not right.' : 'Something went wrong: ' + a[1];
+      })
+      .catch(function () { msg.textContent = 'Could not reach the server. Check your signal and try again.'; });
+  };
+
+  render();
+})();
+</script>
+</body>
+</html>

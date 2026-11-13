@@ -1,0 +1,10 @@
+name = "REPLACE-WITH-A-LONG-RANDOM-NAME"
+main = "src/worker.js"
+compatibility_date = "2025-01-01"
+
+[assets]
+directory = "./public"
+
+[[kv_namespaces]]
+binding = "FRAME"
+id = "REPLACE-WITH-KV-ID"
