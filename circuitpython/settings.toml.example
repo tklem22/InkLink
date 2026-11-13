@@ -1,0 +1,10 @@
+# Copy these lines into the settings.toml file on the CIRCUITPY drive (the frame's small USB drive).
+# Wi-Fi (2.4 GHz only):
+CIRCUITPY_WIFI_SSID = "your-wifi-name"
+CIRCUITPY_WIFI_PASSWORD = "your-wifi-password"
+
+# Where the frame fetches its picture: hostname only, no https:// and no slash.
+FRAME_HOST = "your-worker-name.your-account.workers.dev"
+
+# Optional viewing password. Only add this once the Worker has VIEW_KEY set to the same value.
+# FRAME_KEY = "long-random-text"

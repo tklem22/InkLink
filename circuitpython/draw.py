@@ -1,3 +1,4 @@
+import os
 import time
 import displayio
 import waveshare7in5bv3
@@ -7,7 +8,16 @@ import adafruit_requests
 import bmpread
 import microcontroller
 
-host = "your-domain.com"
+# Where to fetch the picture from. Set FRAME_HOST in settings.toml (hostname only, no https://);
+# the line below is only the fallback.
+host = os.getenv("FRAME_HOST") or "your-domain.com"
+
+# Optional password for viewing the picture. If FRAME_KEY is set in settings.toml it is sent as the
+# "x-frame-key" header. The User-Agent names this device so web hosts can tell it apart from a browser.
+frame_key = os.getenv("FRAME_KEY")
+request_headers = {"User-Agent": "InkLinkFrame/1.0"}
+if frame_key:
+    request_headers["x-frame-key"] = frame_key
 
 displayio.release_displays()
 display = waveshare7in5bv3.Waveshare7in5Bv3()
@@ -45,7 +55,7 @@ while True:
 
     response = None
     try:
-        response = requests.get(f"https://{host}/drawing.bmp")
+        response = requests.get(f"https://{host}/drawing.bmp", headers=request_headers)
         print(response.status_code)
     except Exception as e:
         print(f"Error getting image: {e}")
@@ -60,6 +70,7 @@ while True:
             print("about to read bmp")
             changed = bmpread.read_bmp(content, bitmap, palette)  # This updates the existing bitmap
             print("finished reading bmp")
+            errors = 0  # a full good fetch means the connection is healthy
         except Exception as e:
             print(f"Error loading image: {e}")
             errors += 1
@@ -67,6 +78,8 @@ while True:
             continue
         finally:
             response.close()
+    elif response is not None:
+        response.close()  # free the connection even when the server did not send a picture
 
     if changed: 
         print("about to refresh")
