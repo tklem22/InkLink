@@ -1,0 +1,5 @@
+{
+  "name": "inklink-send-kit",
+  "private": true,
+  "scripts": { "test": "node tests/convert.test.mjs && node tests/worker.test.mjs" }
+}
