@@ -8,3 +8,8 @@ directory = "./public"
 [[kv_namespaces]]
 binding = "FRAME"
 id = "REPLACE-WITH-KV-ID"
+
+# Wakes the Worker every hour. It only does anything in the morning (6 AM New York time),
+# and only once a day, so the daily message changes before the day starts.
+[triggers]
+crons = ["0 * * * *"]

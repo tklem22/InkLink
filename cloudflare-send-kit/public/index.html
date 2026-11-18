@@ -20,6 +20,14 @@
   #send{width:100%;margin-top:14px;background:#b33;color:#fff;border-color:#b33;font-size:18px}
   #msg{margin-top:10px;min-height:24px;font-size:16px}
   .small{font-size:13px;color:#666}
+  .tabs button{padding:12px 4px}
+  #banklist{margin-top:10px}
+  .bi{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #e6dfd5;font-size:15px}
+  .bi .t{flex:1}.bi .u{color:#999;text-decoration:line-through}
+  .bi button{padding:6px 10px;font-size:13px;border-width:1px}
+  #bankbtns{display:flex;gap:8px;margin-top:10px}
+  #bankbtns button{flex:1}
+  #bankadd{background:#b33;color:#fff;border-color:#b33;font-size:18px}
 </style>
 </head>
 <body>
@@ -28,6 +36,7 @@
   <button id="t-photo" class="on">Photo</button>
   <button id="t-text">Words</button>
   <button id="t-draw">Draw</button>
+  <button id="t-bank">Bank</button>
 </div>
 
 <div id="p-photo" class="pane on">
@@ -58,6 +67,20 @@
   <p class="small">Draw in the box below with your finger.</p>
 </div>
 
+<div id="p-bank" class="pane">
+  <p id="bankstat" class="small">Type your secret key below, then tap Show bank.</p>
+  <label>New messages <span class="small">(one per line; no repeats, same words are skipped)</span></label>
+  <textarea id="bankbox" rows="6" placeholder="I love you because you make every day feel like a holiday&#10;Thank you for always making me coffee&#10;12-06 | Happy anniversary my love"></textarea>
+  <p class="small">To save a message for one special day, start the line with the date and a bar, like <b>12-06 | Happy anniversary</b>.</p>
+  <div id="bankbtns">
+    <button id="bankadd">Add to bank</button>
+    <button id="bankshow">Show bank</button>
+  </div>
+  <div id="bankmsg" style="margin-top:10px;min-height:24px;font-size:16px"></div>
+  <div id="banklist"></div>
+  <button id="picknow" style="margin-top:14px;width:100%">Use the next message now (test)</button>
+</div>
+
 <p class="small" style="margin-top:14px">What the frame will show:</p>
 <canvas id="view" width="800" height="480"></canvas>
 <canvas id="work" width="800" height="480" style="display:none"></canvas>
@@ -69,6 +92,7 @@
 
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&family=Pacifico&display=swap">
 <script src="convert.js"></script>
+<script src="layout.js"></script>
 <script>
 (function () {
   var work = document.getElementById('work'), wctx = work.getContext('2d');
@@ -82,13 +106,15 @@
 
   function setMode(m) {
     mode = m;
-    ['photo', 'text', 'draw'].forEach(function (k) {
+    ['photo', 'text', 'draw', 'bank'].forEach(function (k) {
       document.getElementById('t-' + k).className = k === m ? 'on' : '';
       document.getElementById('p-' + k).className = 'pane' + (k === m ? ' on' : '');
     });
+    document.getElementById('send').style.display = m === 'bank' ? 'none' : '';
     render();
+    if (m === 'bank' && keyBox.value.trim()) loadBank();
   }
-  ['photo', 'text', 'draw'].forEach(function (k) {
+  ['photo', 'text', 'draw', 'bank'].forEach(function (k) {
     document.getElementById('t-' + k).onclick = function () { setMode(k); };
   });
 
@@ -127,6 +153,10 @@
   function render() {
     if (mode === 'photo') renderPhoto();
     else if (mode === 'text') renderText();
+    else if (mode === 'bank') {
+      var first = bankLines()[0];
+      if (first) renderBankLine(first.text); else blank();
+    }
     // draw mode paints straight onto the work canvas
     var d = wctx.getImageData(0, 0, 800, 480);
     var bmp = FrameConvert.toFrameBMP(d.data, mode === 'photo');
@@ -187,6 +217,108 @@
         else msg.textContent = a[1] === 'Wrong key' ? 'That key is not right.' : 'Something went wrong: ' + a[1];
       })
       .catch(function () { msg.textContent = 'Could not reach the server. Check your signal and try again.'; });
+  };
+
+  // ---- message bank ----
+  var BANKFONT = "'Dancing Script', cursive";
+  var bankBox = document.getElementById('bankbox'), bankMsg = document.getElementById('bankmsg');
+  function measure(t, size) { wctx.font = size + 'px ' + BANKFONT; return wctx.measureText(t).width; }
+  function bankLines() {
+    return bankBox.value.split('\n').map(FrameLayout.parseLine).filter(function (x) { return x.text; });
+  }
+  function renderBankLine(text) {
+    blank();
+    var fit = FrameLayout.fitText(text, measure, { maxWidth: 720, maxHeight: 400, maxSize: 150 });
+    wctx.fillStyle = '#000'; wctx.textAlign = 'center'; wctx.textBaseline = 'middle';
+    wctx.font = fit.size + 'px ' + BANKFONT;
+    var top = 240 - (fit.lineHeight * (fit.lines.length - 1)) / 2;
+    fit.lines.forEach(function (l, i) { wctx.fillText(l, 400, top + i * fit.lineHeight); });
+    return fit.fits;
+  }
+  bankBox.oninput = function () { if (mode === 'bank') render(); };
+  function needKey() {
+    var key = keyBox.value.trim();
+    if (!key) bankMsg.textContent = 'Type your secret key first.';
+    return key;
+  }
+  function fontsReady() {
+    if (!document.fonts || !document.fonts.load) return Promise.resolve(true);
+    return document.fonts.load('150px ' + BANKFONT).then(function () { return document.fonts.check('40px ' + BANKFONT); }, function () { return false; });
+  }
+
+  function showBank(data) {
+    var items = data.items || [];
+    document.getElementById('bankstat').textContent =
+      data.left + ' messages left, ' + data.used + ' used (' + data.total + ' in the bank). ' +
+      (data.left === 0 ? 'The bank is empty, so the frame keeps its last picture. Add more!' :
+       data.left <= 7 ? 'Running low. Add more soon! 💌' : 'That covers about ' + data.left + ' mornings. 💖');
+    var box = document.getElementById('banklist'); box.textContent = '';
+    items.slice().sort(function (a, b) { return (a.usedOn ? 1 : 0) - (b.usedOn ? 1 : 0); }).forEach(function (it) {
+      var row = document.createElement('div'); row.className = 'bi';
+      var t = document.createElement('div'); t.className = 't' + (it.usedOn ? ' u' : '');
+      t.textContent = it.text + (it.date && !it.usedOn ? '  (for ' + it.date + ')' : '') + (it.usedOn ? '  (shown ' + it.usedOn + ')' : '');
+      var b = document.createElement('button'); b.textContent = 'Remove';
+      b.onclick = function () {
+        if (b.textContent === 'Remove') { b.textContent = 'Tap again'; setTimeout(function () { b.textContent = 'Remove'; }, 3000); return; }
+        bankCall('/bank/remove?id=' + encodeURIComponent(it.id), 'POST').then(function (r) { if (r.ok) loadBank(); });
+      };
+      row.appendChild(t); row.appendChild(b); box.appendChild(row);
+    });
+  }
+  function bankCall(path, method, body) {
+    return fetch(path, { method: method, headers: { 'x-key': keyBox.value.trim() }, body: body });
+  }
+  function loadBank() {
+    if (!needKey()) return Promise.resolve();
+    return bankCall('/bank/list', 'GET').then(function (r) {
+      if (r.status === 401) { bankMsg.textContent = 'That key is not right.'; return; }
+      return r.json().then(function (d) { try { localStorage.setItem('framekey', keyBox.value.trim()); } catch (e) {} showBank(d); });
+    }).catch(function () { bankMsg.textContent = 'Could not reach the server. Check your signal and try again.'; });
+  }
+  document.getElementById('bankshow').onclick = function () { bankMsg.textContent = ''; loadBank(); };
+
+  document.getElementById('bankadd').onclick = function () {
+    if (!needKey()) return;
+    var lines = bankLines();
+    if (!lines.length) { bankMsg.textContent = 'Type at least one message first.'; return; }
+    var btn = this; btn.disabled = true;
+    var added = 0, dup = 0, failed = [], stop = '';
+    fontsReady().then(function (ok) {
+      if (!ok) { stop = 'The handwriting font did not load. Check your signal and try again.'; return; }
+      return lines.reduce(function (chain, ln, i) {
+        return chain.then(function () {
+          if (stop) { failed.push(ln); return; }
+          bankMsg.textContent = 'Adding ' + (i + 1) + ' of ' + lines.length + '...';
+          if (!renderBankLine(ln.text)) { failed.push(ln); return; }
+          var bmp = FrameConvert.toFrameBMP(wctx.getImageData(0, 0, 800, 480).data, false);
+          var path = '/bank/add?text=' + encodeURIComponent(ln.text) + (ln.date ? '&date=' + encodeURIComponent(ln.date) : '');
+          return bankCall(path, 'POST', bmp).then(function (r) {
+            if (r.ok) added++;
+            else if (r.status === 409) dup++;
+            else if (r.status === 401) { stop = 'That key is not right.'; failed.push(ln); }
+            else failed.push(ln);
+          }, function () { stop = 'Lost the connection. Tap Add again to finish.'; failed.push(ln); });
+        });
+      }, Promise.resolve());
+    }).then(function () {
+      bankBox.value = failed.map(function (f) { return (f.date ? f.date + ' | ' : '') + f.text; }).join('\n');
+      bankMsg.textContent = stop || ('Added ' + added + (dup ? ', skipped ' + dup + ' already in the bank' : '') + (failed.length ? ', ' + failed.length + ' left in the box to retry' : '') + '. 💖');
+      btn.disabled = false;
+      render();
+      return loadBank();
+    });
+  };
+
+  var armed = false;
+  document.getElementById('picknow').onclick = function () {
+    var b = this;
+    if (!needKey()) return;
+    if (!armed) { armed = true; b.textContent = 'Tap again to use the next message now'; setTimeout(function () { armed = false; b.textContent = 'Use the next message now (test)'; }, 4000); return; }
+    armed = false; b.textContent = 'Use the next message now (test)';
+    bankCall('/bank/pick-now', 'POST').then(function (r) { return r.json(); }).then(function (d) {
+      bankMsg.textContent = d.status === 'picked' ? 'The frame will show: ' + d.text : 'Nothing to pick (the bank is empty).';
+      loadBank();
+    }).catch(function () { bankMsg.textContent = 'Could not reach the server.'; });
   };
 
   render();
